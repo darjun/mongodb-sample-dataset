@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -73,7 +74,9 @@ func main() {
 					var document interface{}
 					err = decoder.Decode(&document)
 					if err != nil {
-						fmt.Printf("decode error:%v\n", err)
+						if err != io.EOF {
+							fmt.Printf("decode error:%v\n", err)
+						}
 						break
 					}
 					documents = append(documents, document)
@@ -86,9 +89,10 @@ func main() {
 					if end > len(documents) {
 						end = len(documents)
 					}
-					result, err := coll.InsertMany(context.TODO(), documents[begin:end])
+					_, err := coll.InsertMany(context.TODO(), documents[begin:end])
 					if err != nil {
-						fmt.Printf("%#v\n", result)
+						fmt.Printf("InsertMany failed:%v\n", err)
+						continue
 					}
 				}
 			}
