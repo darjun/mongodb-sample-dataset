@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"log"
-	"os"
-	"strings"
 )
 
 func main() {
@@ -20,6 +23,15 @@ func main() {
 	uri := os.Getenv("MONGODB_URI")
 	if uri == "" {
 		log.Fatal("You must set your 'MONGODB_URI' environment variable.")
+	}
+
+	countPerBathStr := os.Getenv("COUNT_PER_BATCH")
+	if countPerBathStr == "" {
+		countPerBathStr = "1000"
+	}
+	countPerBath, err := strconv.ParseInt(countPerBathStr, 10, 64)
+	if err != nil {
+		panic(err)
 	}
 
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(uri))
@@ -56,15 +68,28 @@ func main() {
 				}
 
 				var documents []interface{}
-				err = json.Unmarshal(data, &documents)
-				if err != nil {
-					panic(err)
+				decoder := json.NewDecoder(bytes.NewReader(data))
+				for {
+					var document interface{}
+					err = decoder.Decode(&document)
+					if err != nil {
+						fmt.Printf("decode error:%v\n", err)
+						break
+					}
+					documents = append(documents, document)
 				}
 
 				coll := client.Database(entry.Name()).Collection(strings.TrimSuffix(file.Name(), ".json"))
-				result, err := coll.InsertMany(context.TODO(), documents)
-				if err != nil {
-					fmt.Printf("%#v\n", result)
+				for page := 0; page <= (len(documents)-1)/int(countPerBath); page++ {
+					begin := page * int(countPerBath)
+					end := (page + 1) * int(countPerBath)
+					if end > len(documents) {
+						end = len(documents)
+					}
+					result, err := coll.InsertMany(context.TODO(), documents[begin:end])
+					if err != nil {
+						fmt.Printf("%#v\n", result)
+					}
 				}
 			}
 		}
